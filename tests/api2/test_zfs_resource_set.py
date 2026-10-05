@@ -6,6 +6,7 @@ import pytest
 from auto_config import pool_name
 from middlewared.service_exception import ValidationError, ValidationErrors
 from middlewared.test.integration.assets.entitlements import entitled
+from middlewared.test.integration.assets.zfs_resource import thick_refreservation
 from middlewared.test.integration.utils import call, ssh
 
 GiB = 1024**3
@@ -332,7 +333,7 @@ def reservation(path):
 
 def test_grow_thick_volume_keeps_it_thick():
     with volume("test_set_grow_thick") as path:
-        assert reservation(path) == (GiB, GiB)
+        assert reservation(path) == (GiB, thick_refreservation(path))
 
         entry = call("zfs.resource.set", {"path": path, "properties": {"volsize": 2 * GiB}})
         refreservation = entry["properties"]["refreservation"]["value"]
@@ -360,6 +361,7 @@ def test_grow_over_reserved_volume_never_lowers_reservation():
 
 def test_grow_over_headroom_is_rejected_and_escapable():
     with volume("test_set_grow_over_headroom") as path:
+        thick = thick_refreservation(path)
         base = read(pool_name, ["available"])["properties"]["available"]["value"]
         base += read(path, ["used"])["properties"]["used"]["value"]
         volsize = int(0.9 * base) // MiB * MiB
@@ -367,7 +369,7 @@ def test_grow_over_headroom_is_rejected_and_escapable():
             call("zfs.resource.set", {"path": path, "properties": {"volsize": volsize, "refreservation": 0}})
         assert exc_info.value.attribute == "zfs.resource.set.properties.volsize"
         assert "more than 80%" in exc_info.value.errmsg
-        assert reservation(path) == (GiB, GiB)
+        assert reservation(path) == (GiB, thick)
 
         call(
             "zfs.resource.set",
